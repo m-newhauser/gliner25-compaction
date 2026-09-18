@@ -1,6 +1,6 @@
 # GLiNER2.5 Context Compaction for Claude Code
 
-Experimental, local-first context compaction for Claude Code. GLiNER2.5 chooses a retention action for completed tool interactions and extracts exact source spans when the full result is unnecessary.
+Experimental, local-first context compaction for Claude Code. [GLiNER2.5](https://huggingface.co/collections/fastino/gliner25-models) chooses a retention action for completed tool interactions and extracts exact source spans when the full result is unnecessary.
 
 This project does not generate a prose summary. User and assistant text remains unchanged, retained evidence is copied from original character offsets, and mutating tool interactions are preserved in full.
 
