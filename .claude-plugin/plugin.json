@@ -1,0 +1,69 @@
+{
+  "name": "local-gliner25-compaction",
+  "version": "0.1.0",
+  "description": "Local, evidence-first GLiNER2.5 compaction for Claude Code.",
+  "author": {
+    "name": "Mary Newhauser"
+  },
+  "userConfig": {
+    "pythonPath": {
+      "type": "string",
+      "title": "Python executable",
+      "description": "Python executable containing the gliner25_context_compaction package."
+    },
+    "checkpoint": {
+      "type": "string",
+      "title": "GLiNER checkpoint",
+      "description": "Local Hugging Face checkpoint used for retention and evidence analysis.",
+      "default": "fastino/gliner2.5-base-v1"
+    },
+    "timeoutMs": {
+      "type": "number",
+      "title": "Worker timeout in milliseconds",
+      "description": "Hard deadline for the complete local Python compaction worker.",
+      "default": 90000
+    },
+    "shadowMode": {
+      "type": "boolean",
+      "title": "Shadow mode",
+      "description": "Log proposed decisions without replacing session history.",
+      "default": true
+    },
+    "fallback": {
+      "type": "string",
+      "title": "Failure fallback",
+      "description": "Use host compaction or leave history unchanged.",
+      "default": "host"
+    },
+    "minReductionRatio": {
+      "type": "number",
+      "title": "Minimum reduction ratio",
+      "description": "Minimum character reduction required before replacing session history.",
+      "default": 0.25
+    },
+    "preserveRecentMessages": {
+      "type": "number",
+      "title": "Recent messages to preserve",
+      "description": "Number of newest transcript messages excluded from compaction.",
+      "default": 6
+    },
+    "minimumConfidence": {
+      "type": "number",
+      "title": "Minimum retention confidence",
+      "description": "Predictions below this confidence fail closed to full retention.",
+      "default": 0.7
+    },
+    "minimumEvidenceConfidence": {
+      "type": "number",
+      "title": "Minimum evidence confidence",
+      "description": "Minimum confidence for an extracted span to affect retention.",
+      "default": 0.5
+    },
+    "contextCharacters": {
+      "type": "number",
+      "title": "Context around evidence spans",
+      "description": "Original characters retained on each side of selected evidence.",
+      "default": 120
+    }
+  }
+}

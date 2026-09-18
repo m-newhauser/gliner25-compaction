@@ -1,0 +1,15 @@
+{
+  "name": "gliner25-compaction-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.hooks.json",
+    "test": "tsx --test tests/hook.test.ts",
+    "check": "npm run typecheck && npm test"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.13",
+    "typescript": "^5.7.2"
+  }
+}

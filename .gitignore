@@ -1,0 +1,42 @@
+# Credentials and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+service-account*.json
+auth.json
+.npmrc
+.pypirc
+
+# Private transcript captures
+captures/
+*.transcript.json
+*.session.json
+
+# Model caches and downloaded weights
+.cache/
+*.safetensors
+*.bin
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+build/
+dist/
+wheels/
+*.egg-info/
+
+# Node and generated output
+node_modules/
+coverage/
+
+# Editors and operating systems
+.DS_Store
+.vscode/
+.idea/
