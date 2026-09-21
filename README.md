@@ -1,108 +1,98 @@
-# GLiNER2.5 Context Compaction for Claude Code
+# GLiNER2.5 Local Context
 
-Experimental, local-first context compaction for Claude Code. [GLiNER2.5](https://huggingface.co/collections/fastino/gliner25-models) chooses a retention action for completed tool interactions and extracts exact source spans when the full result is unnecessary.
+Local, extractive context pruning for coding agents. GLiNER2.5 classifies
+completed tool interactions and retains exact evidence without generating a
+summary or sending transcript content to an external model.
 
-This project does not generate a prose summary. User and assistant text remains unchanged, retained evidence is copied from original character offsets, and mutating tool interactions are preserved in full.
+The default checkpoint is `fastino/gliner2.5-small-v1` from the
+[GLiNER2.5 model collection](https://huggingface.co/collections/fastino/gliner25-models).
+Model weights are downloaded during setup and use the Apache-2.0 license.
 
-## How it works
+## Choose your harness
 
-For each completed, eligible tool interaction, the local model receives:
+### OpenCode
 
-- The current goal
-- Nearby conversation text
-- The tool name and input
-- The original tool result
+Manual, non-destructive pruning of the provider-bound context.
 
-It returns one action:
+- Package: `opencode-gliner-prune`
+- Commands: setup, preview, apply, status, and reset
+- Guide: [`integrations/opencode/README.md`](integrations/opencode/README.md)
+- Status: developer preview for OpenCode 1.18.31 on Apple Silicon macOS
 
-- `keep_full`: preserve the complete call and result
-- `keep_evidence`: preserve exact excerpts from the result
-- `keep_call_only`: preserve the call and replace its result with a rerun notice
-- `drop`: remove the paired call and result
+### Claude Code
 
-Deterministic safeguards override uncertain predictions, protect validated diagnostic spans, preserve recent messages and mutations, validate exact offsets, and reject orphaned tool results.
+Evidence-first pruning during Claude Code's native compaction lifecycle.
 
-## Requirements
+- Hook: `session.compact`
+- Modes: shadow, apply, host fallback, or unchanged fallback
+- Guide:
+  [`integrations/claude-code/README.md`](integrations/claude-code/README.md)
+- Status: local plugin preview
 
-- Python 3.11 or newer
-- [uv](https://docs.astral.sh/uv/)
-- Claude Code 2.1.274 or newer
-- Claude Code function hooks enabled
+### Pi
 
-The default checkpoint is `fastino/gliner2.5-base-v1`. Model weights are downloaded from Hugging Face during setup and are not stored in this repository. The checkpoint model card declares Apache-2.0 licensing.
+Planned adapter using the same canonical transcript and sidecar protocol.
 
-## Install
+- Guide: [`integrations/pi/README.md`](integrations/pi/README.md)
+- Status: not implemented
 
-```sh
-git clone https://github.com/m-newhauser/gliner25-compaction.git
-cd gliner25-compaction
-uv sync --frozen
-uv run python scripts/download_model.py
-```
+## Shared behavior
 
-Start Claude Code with the plugin:
+- Preserve recent messages, mutations, unknown tools, and arbitrary shell
+  commands.
+- Fail closed on low-confidence or malformed predictions.
+- Rebuild excerpts only from validated original character spans.
+- Preserve tool-call/result pairing.
+- Default to `fastino/gliner2.5-small-v1`.
 
-```sh
-export CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1
-export GLINER_COMPACTION_PYTHON="$PWD/.venv/bin/python"
-claude --plugin-dir .
-```
+Retention actions are `keep_full`, `keep_evidence`, `keep_call_only`, and
+`drop`.
 
-The public default is `shadowMode: true`. Shadow mode runs local analysis and logs the proposed reduction without replacing session history. Review its output before explicitly setting `shadowMode` to `false` in your Claude Code plugin configuration.
+## Architecture and safety
 
-## Safety behavior
-
-- Low-confidence retention predictions fail closed to `keep_full`.
-- Missing or invalid evidence fails closed to `keep_full`.
-- Mutating tools and unknown shell commands are retained in full.
-- Shell commands containing control operators, pipelines, substitutions, or redirections are treated as mutating.
-- Compacted messages are installed only after transcript and span validation.
-- Worker failures delegate to Claude Code's compactor by default.
-- The worker has a 90-second host deadline.
-
-## Privacy
-
-Inference runs in a local Python worker. The initial model download contacts Hugging Face, but transcript analysis does not require a remote inference API.
-
-Do not commit real Claude Code transcripts. If `GLINER_COMPACTION_CAPTURE_PATH` is set, the worker writes the complete compaction request and response to that local path. Those files may contain source code, prompts, tool output, credentials, personal paths, and other sensitive data. Capture output is opt-in and ignored by this repository.
-
-This repository intentionally contains no real session captures, model weights, or demo transcript data.
-
-## Configuration
-
-The plugin exposes these options:
-
-- `checkpoint`: local Hugging Face checkpoint
-- `timeoutMs`: worker deadline, default `90000`
-- `shadowMode`: analyze without replacing history, default `true`
-- `fallback`: `host` or `unchanged`
-- `minReductionRatio`: minimum reduction before installing output, default `0.25`
-- `preserveRecentMessages`: newest messages excluded from compaction, default `6`
-- `minimumConfidence`: retention threshold, default `0.7`
-- `minimumEvidenceConfidence`: evidence threshold, default `0.5`
-- `contextCharacters`: original context retained around each evidence span, default `120`
+- [`docs/architecture.md`](docs/architecture.md)
+- [`docs/safety-policy.md`](docs/safety-policy.md)
+- [`docs/sidecar-protocol.md`](docs/sidecar-protocol.md)
+- [`docs/evaluation.md`](docs/evaluation.md)
+- [`docs/compatibility.md`](docs/compatibility.md)
 
 ## Development
 
 ```sh
-uv sync --frozen
+uv sync
+uv run python scripts/download_model.py
 uv run pytest
-npm ci --ignore-scripts
-npm run check
+
+npm install
+npm run typecheck
+npm run test:integrations
+npm run build
 ```
 
-## Limitations
+Run the real local checkpoint integration test:
 
-- This is an experimental prototype, not a general-purpose summarizer.
-- Reduction metrics are measured in characters, not model tokens.
-- Retention quality depends on the checkpoint and transcript domain.
-- The conservative shell policy may retain commands that are actually read-only.
-- Only completed tool-call/result pairs are candidates for compaction.
-- Domain-specific tuning and broad production evaluation remain future work.
+```sh
+GLINER25_LIVE=1 npm run test:opencode
+```
 
-## Security
+Reproduce the synthetic fixture evaluation:
 
-Please report vulnerabilities privately through [GitHub Security Advisories](https://github.com/m-newhauser/gliner25-compaction/security/advisories/new). Do not open a public issue containing credentials or private transcripts.
+```sh
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
+  uv run python scripts/evaluate_fixture.py
+```
+
+OpenCode demo guidance lives in
+[`demo/opencode/STORYBOARD.md`](demo/opencode/STORYBOARD.md).
+
+## Privacy and security
+
+Inference runs locally after the initial model download. Do not commit real
+agent transcripts: prompts, source code, tool output, credentials, and
+personal paths may be present.
+
+Report vulnerabilities privately through
+[GitHub Security Advisories](https://github.com/m-newhauser/gliner25-compaction/security/advisories/new).
 
 ## License
 

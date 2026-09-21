@@ -1,7 +1,7 @@
 [project]
 name = "gliner25-context-compaction"
 version = "0.1.0"
-description = "Verbatim context compaction with GLiNER2.5 classification and evidence spans"
+description = "Local context pruning with GLiNER2.5 classification and exact evidence spans"
 authors = [
     { name = "Mary Newhauser" }
 ]

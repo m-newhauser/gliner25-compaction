@@ -1,7 +1,11 @@
+import os
+
 from gliner2 import AutoExtractor
 
 
-CHECKPOINT = "fastino/gliner2.5-base-v1"
+CHECKPOINT = os.environ.get(
+    "GLINER25_CHECKPOINT", "fastino/gliner2.5-small-v1"
+)
 
 
 if __name__ == "__main__":

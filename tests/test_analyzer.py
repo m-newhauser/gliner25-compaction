@@ -1,4 +1,4 @@
-from gliner25_context_compaction.analyzer import GlinerAnalyzer
+from gliner25_context_compaction.analyzer import GlinerAnalyzer, _single_prediction
 from gliner25_context_compaction.types import (
     AnalysisRequest,
     ToolInteraction,
@@ -59,3 +59,7 @@ def test_long_inputs_use_explicit_long_context_apis():
     )
     assert [call[0] for call in model.calls] == ["combined_long"]
     assert result[0].evidence[0].text == "https://example.com"
+
+
+def test_confidence_less_prediction_fails_closed():
+    assert _single_prediction("drop") == ("drop", 0.0)

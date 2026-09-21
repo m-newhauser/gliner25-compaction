@@ -22,19 +22,24 @@ captures/
 *.safetensors
 *.bin
 
-# Python
+# Python-generated files
 __pycache__/
 *.py[cod]
 .pytest_cache/
-.venv/
 build/
 dist/
 wheels/
-*.egg-info/
+*.egg-info
 
-# Node and generated output
+# Virtual environments
+.venv/
+
+# JavaScript tooling and local plugin state
 node_modules/
+integrations/*/node_modules/
 coverage/
+.opencode/
+.tmp/
 
 # Editors and operating systems
 .DS_Store
