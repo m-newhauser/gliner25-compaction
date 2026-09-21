@@ -209,6 +209,11 @@ await tuiModule.registerGlinerPruneCommand({
   client: {},
 });
 const commands = new Map(registered.map((item) => [item.value, item]));
+assert.deepEqual(
+  [...commands.keys()],
+  ["gliner-prune.apply"],
+  "TUI must expose exactly one GLiNER command",
+);
 
 const run = async (name) => {
   const command = commands.get(`gliner-prune.${name}`);
@@ -232,13 +237,14 @@ const report = {
   beforeHash,
 };
 try {
-  report.setup = await run("setup");
-  report.preview = await run("preview");
-  assert.match(report.preview.message, /Preview: [3-5]\/5 tool interactions/);
-  const tokenEstimate = report.preview.message.match(
+  report.apply = await run("apply");
+  assert.match(report.apply.message, /^Context pruned by \d+\.\d%/);
+  assert.match(report.apply.message, /[3-5]\/5 tool results changed/);
+  assert.match(report.apply.message, /Stored history unchanged/);
+  const tokenEstimate = report.apply.message.match(
     /~([\d,]+) → ~([\d,]+) estimated tokens/,
   );
-  assert.ok(tokenEstimate, "preview did not report estimated token reduction");
+  assert.ok(tokenEstimate, "apply did not report estimated token reduction");
   const estimatedBefore = Number(tokenEstimate[1].replaceAll(",", ""));
   const estimatedAfter = Number(tokenEstimate[2].replaceAll(",", ""));
   const estimatedReduction = 1 - estimatedAfter / estimatedBefore;
@@ -251,12 +257,6 @@ try {
     after: estimatedAfter,
     reduction: estimatedReduction,
   };
-
-  report.apply = await run("apply");
-  assert.match(report.apply.message, /Applied: [3-5]\/5 tool interactions/);
-
-  report.active = await run("status");
-  assert.match(report.active.message, /^Active:/);
 
   const providerOutput = { messages: structuredClone(messages) };
   await server["experimental.chat.messages.transform"]({}, providerOutput);
@@ -297,15 +297,24 @@ try {
     "apply attempted a durable session mutation",
   );
 
-  report.reset = await run("reset");
-  assert.match(report.reset.message, /full context restored/);
-
-  report.inactive = await run("status");
-  assert.match(report.inactive.message, /no active pruning/);
-
-  const resetOutput = { messages: structuredClone(messages) };
+  const restoredMessages = [
+    ...structuredClone(messages),
+    {
+      info: { id: "msg_new_goal", sessionID, role: "user" },
+      parts: [
+        {
+          id: "part_new_goal",
+          sessionID,
+          messageID: "msg_new_goal",
+          type: "text",
+          text: "Start a new substantive task.",
+        },
+      ],
+    },
+  ];
+  const resetOutput = { messages: restoredMessages };
   await server["experimental.chat.messages.transform"]({}, resetOutput);
-  assert.deepEqual(resetOutput.messages, messages);
+  assert.deepEqual(resetOutput.messages, restoredMessages);
   const afterResetHash = durableHash(await fetchDurableMessages());
   assert.equal(afterResetHash, beforeHash, "durable messages changed after reset");
   assert.deepEqual(
@@ -313,6 +322,7 @@ try {
     [],
     "reset attempted a durable session mutation",
   );
+  report.restoredBySubstantivePrompt = true;
   report.afterHash = afterResetHash;
   report.durableMutationCalls = durableMutationCalls;
   report.transformedToolCount = transformedTools.length;

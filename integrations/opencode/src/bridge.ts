@@ -56,6 +56,7 @@ export async function startBridge(
   const server = createServer((socket) => {
     let data = "";
     socket.setEncoding("utf8");
+    socket.on("error", () => {});
     socket.on("data", (chunk) => {
       data += chunk;
       if (Buffer.byteLength(data) > MAX_MESSAGE_BYTES) {

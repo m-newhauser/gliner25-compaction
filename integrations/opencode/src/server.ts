@@ -105,6 +105,19 @@ export function createOpenCodeGlinerPrunePlugin(
         },
       });
     });
+    const modelReady = sidecar.setup();
+    void modelReady.catch((error) => {
+      void client.app.log({
+        body: {
+          service: "opencode-gliner-prune",
+          level: "error",
+          message: "GLiNER model failed to load",
+          extra: {
+            error: error instanceof Error ? error.message : String(error),
+          },
+        },
+      });
+    });
 
     const sessionMessages = async (sessionID: string) => {
       const response = await client.session.messages({
@@ -114,6 +127,7 @@ export function createOpenCodeGlinerPrunePlugin(
     };
 
     const analyze = async (sessionID: string, focus: string) => {
+      await modelReady;
       const messages = await sessionMessages(sessionID);
       const goal =
         deriveGoal(messages, focus) || "Continue the current coding task.";
@@ -132,25 +146,36 @@ export function createOpenCodeGlinerPrunePlugin(
       const changed = result.decisions.filter(
         (decision) => decision.action !== "keep_full",
       ).length;
+      const actionCounts = {
+        drop: result.decisions.filter((decision) => decision.action === "drop")
+          .length,
+        reduce: result.decisions.filter(
+          (decision) => decision.action === "keep_evidence",
+        ).length,
+        omit: result.decisions.filter(
+          (decision) => decision.action === "keep_call_only",
+        ).length,
+        full: result.decisions.filter(
+          (decision) => decision.action === "keep_full",
+        ).length,
+      };
       const beforeTokens = Math.ceil(result.characters_before / 4);
       const afterTokens = Math.ceil(result.characters_after / 4);
-      const evidence = result.decisions.reduce(
-        (count, decision) => count + decision.evidence.length,
-        0,
-      );
-      const actions = result.decisions
-        .filter((decision) => decision.action !== "keep_full")
-        .slice(0, 5)
-        .map((decision) => `${decision.action}: ${decision.tool_use_id}`);
       const excerpts = result.decisions
         .flatMap((decision) => decision.evidence.map((span) => span.text))
         .filter((text, index, values) => values.indexOf(text) === index)
-        .slice(0, 2)
-        .map((text) => `"${text.replaceAll("\n", " ").slice(0, 80)}"`);
+        .slice(0, 3)
+        .map((text) => `"${text.replaceAll("\n", " ").slice(0, 60)}"`);
+      const reduction = (result.reduction * 100).toFixed(1);
       return [
-        `${verb} ${changed}/${result.decisions.length} tool interactions; ~${beforeTokens.toLocaleString()} → ~${afterTokens.toLocaleString()} estimated tokens; ${evidence} exact evidence spans retained`,
-        actions.length ? actions.join(", ") : "",
-        excerpts.length ? `Evidence: ${excerpts.join(", ")}` : "",
+        `${verb} by ${reduction}%`,
+        `${changed}/${result.decisions.length} tool results changed · ~${beforeTokens.toLocaleString()} → ~${afterTokens.toLocaleString()} estimated tokens`,
+        `Dropped ${actionCounts.drop} · reduced ${actionCounts.reduce} · omitted ${actionCounts.omit} · kept ${actionCounts.full} full`,
+        excerpts.length ? `Preserved: ${excerpts.join(", ")}` : "",
+        result.warnings.length
+          ? `Warnings: ${result.warnings.slice(0, 2).join("; ")}`
+          : "",
+        "Stored history unchanged; a new substantive prompt restores full context",
       ]
         .filter(Boolean)
         .join("\n");
@@ -160,7 +185,7 @@ export function createOpenCodeGlinerPrunePlugin(
     const bridge = await startBridge(socketPath, async (request) => {
       try {
         if (request.method === "setup") {
-          await sidecar.setup();
+          await modelReady;
           return {
             id: request.id,
             ok: true,
@@ -237,7 +262,7 @@ export function createOpenCodeGlinerPrunePlugin(
             id: request.id,
             ok: true,
             result: {
-              message: `${summary(result, "Applied:")}; history unchanged; reset is available`,
+              message: summary(result, "Context pruned"),
             },
           };
         }

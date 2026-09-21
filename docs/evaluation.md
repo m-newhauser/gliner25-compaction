@@ -40,11 +40,11 @@ ceiling.
 npm run test:release:opencode
 ```
 
-This packs and installs the npm artifact into an isolated directory, runs
-setup from an unrelated working directory, analyzes a large synthetic
-transcript, applies pruning, verifies protected facts and an unchanged durable
-hash, resets, and confirms inactive status. Run it before every OpenCode npm
-release.
+This packs and installs the npm artifact into an isolated directory, eagerly
+loads the model from an unrelated working directory, invokes the single prune
+command on a large synthetic transcript, verifies protected facts and an
+unchanged durable hash, then confirms that a substantive prompt restores full
+context. Run it before every OpenCode npm release.
 
 ## Fixture evaluation
 

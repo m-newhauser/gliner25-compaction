@@ -155,7 +155,9 @@ export class SidecarClient {
     return await new Promise<AnalyzeResult>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.#pending.delete(id);
-        reject(new Error("GLiNER prune analysis timed out"));
+        const error = new Error("GLiNER prune analysis timed out");
+        reject(error);
+        this.#terminateChild(child, error);
       }, this.#options.requestTimeoutMs);
       this.#pending.set(id, { resolve, reject, timer });
       const request = `${JSON.stringify({
@@ -180,6 +182,20 @@ export class SidecarClient {
         failWrite(error instanceof Error ? error : new Error(String(error)));
       }
     });
+  }
+
+  #terminateChild(child: ChildProcessWithoutNullStreams, error: Error): void {
+    if (this.#child === child) {
+      this.#child = undefined;
+      this.#ready = undefined;
+    }
+    this.#failAll(error);
+    child.kill();
+    const forceKill = setTimeout(() => {
+      if (child.exitCode === null) child.kill("SIGKILL");
+    }, 1_000);
+    forceKill.unref();
+    child.once("exit", () => clearTimeout(forceKill));
   }
 
   async stop(): Promise<void> {
