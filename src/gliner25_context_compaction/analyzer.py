@@ -32,7 +32,7 @@ def interaction_text(
 
 def _single_prediction(value: Any) -> tuple[str, float]:
     if isinstance(value, str):
-        return value, 1.0
+        return value, 0.0
     if isinstance(value, Mapping):
         return str(value.get("label", "")), float(value.get("confidence", 0.0))
     raise ValueError(f"Unexpected single-label response: {value!r}")
@@ -76,7 +76,7 @@ class GlinerAnalyzer:
 
     @classmethod
     def from_pretrained(
-        cls, checkpoint: str = "fastino/gliner2.5-base-v1"
+        cls, checkpoint: str = "fastino/gliner2.5-small-v1"
     ) -> "GlinerAnalyzer":
         from gliner2 import AutoExtractor
 

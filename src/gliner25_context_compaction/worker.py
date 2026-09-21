@@ -7,7 +7,7 @@ from .analyzer import GlinerAnalyzer
 from .claude import compact_claude_messages, from_claude_messages
 from .validation import deletion_manifest, validate_result
 
-COMPACT_OPTIONS = {
+PRUNE_OPTIONS = {
     "goal",
     "preserve_recent",
     "minimum_confidence",
@@ -23,12 +23,12 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
     options = payload.get("options", {})
     if not isinstance(options, dict):
         raise ValueError("options must be an object")
-    unknown = set(options) - COMPACT_OPTIONS
+    unknown = set(options) - PRUNE_OPTIONS
     if unknown:
         raise ValueError(f"unknown options: {sorted(unknown)}")
 
     checkpoint = str(
-        payload.get("checkpoint", "fastino/gliner2.5-base-v1")
+        payload.get("checkpoint", "fastino/gliner2.5-small-v1")
     )
     analyzer = GlinerAnalyzer.from_pretrained(checkpoint)
     original = from_claude_messages(messages)

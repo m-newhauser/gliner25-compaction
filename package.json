@@ -1,15 +1,22 @@
 {
-  "name": "gliner25-compaction-plugin",
-  "version": "0.1.0",
+  "name": "gliner25-context-pruning",
   "private": true,
   "type": "module",
+  "workspaces": [
+    "integrations/opencode"
+  ],
   "scripts": {
-    "typecheck": "tsc -p tsconfig.hooks.json",
-    "test": "tsx --test tests/hook.test.ts",
-    "check": "npm run typecheck && npm test"
+    "build": "npm run build -w opencode-gliner-prune",
+    "typecheck": "tsc -p integrations/opencode/tsconfig.json && tsc -p integrations/claude-code/tsconfig.json",
+    "test:opencode": "tsx --test integrations/opencode/test/**/*.test.ts",
+    "test:claude": "tsx --test integrations/claude-code/test/**/*.test.ts",
+    "test:integrations": "npm run test:opencode && npm run test:claude"
   },
   "devDependencies": {
-    "tsx": "^4.23.13",
-    "typescript": "^5.7.2"
+    "@opencode-ai/plugin": "1.18.31",
+    "@types/node": "^24.0.0",
+    "tsup": "^8.5.0",
+    "tsx": "^4.23.0",
+    "typescript": "^5.9.0"
   }
 }
