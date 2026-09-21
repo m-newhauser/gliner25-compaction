@@ -1,4 +1,4 @@
-import { cp, copyFile, mkdir, rm } from "node:fs/promises";
+import { access, cp, copyFile, mkdir, rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 
@@ -13,6 +13,7 @@ await copyFile(
   join(repositoryRoot, "LICENSE"),
   join(packageRoot, "dist", "LICENSE"),
 );
+await copyFile(join(repositoryRoot, "README.md"), join(runtime, "README.md"));
 await copyFile(
   join(repositoryRoot, "pyproject.toml"),
   join(runtime, "pyproject.toml"),
@@ -32,4 +33,10 @@ await cp(
       !source.endsWith(".pyc") &&
       !source.endsWith("/worker.py"),
   },
+);
+
+await Promise.all(
+  ["README.md", "pyproject.toml", "uv.lock", "scripts/download_model.py"].map(
+    (file) => access(join(runtime, file)),
+  ),
 );
