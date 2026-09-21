@@ -1,6 +1,6 @@
 {
   "name": "opencode-gliner-prune",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Local GLiNER2.5 context pruning for OpenCode",
   "type": "module",
   "license": "Apache-2.0",

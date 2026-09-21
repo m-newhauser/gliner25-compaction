@@ -4,11 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import type { PluginInput } from "@opencode-ai/plugin";
-import {
-  callBridge,
-  callPublishedBridge,
-  resolveBridgeSocket,
-} from "../src/bridge.js";
+import { bridgeSocketPath, callBridge } from "../src/bridge.js";
 import type { OpenCodeMessage } from "../src/opencode/adapter.js";
 import {
   createOpenCodeGlinerPrunePlugin,
@@ -77,7 +73,7 @@ test("preview is cached, apply is virtual, and reset restores full context", asy
     { client, directory } as unknown as PluginInput,
     undefined,
   );
-  const socketPath = await resolveBridgeSocket(directory);
+  const socketPath = bridgeSocketPath(directory);
 
   try {
     const preview = await callBridge(
@@ -167,60 +163,6 @@ test("preview is cached, apply is virtual, and reset restores full context", asy
     );
   } finally {
     await hooks.dispose?.();
-    await rm(directory, { recursive: true });
-  }
-});
-
-test("published bridge routes to the process that owns the session", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "gliner-prune-routing-"));
-  const sidecar: PruneSidecar = {
-    running: true,
-    setup: async () => {},
-    stop: async () => {},
-    analyze: async () => ({
-      decisions: [],
-      characters_before: 0,
-      characters_after: 0,
-      reduction: 0,
-      warnings: [],
-      context_characters: 120,
-    }),
-  };
-  const client = (ownedSession: string) => ({
-    app: { log: async () => {} },
-    session: {
-      get: async ({ path }: { path: { id: string } }) =>
-        path.id === ownedSession
-          ? { data: { id: path.id } }
-          : { error: { name: "NotFound" } },
-      messages: async () => ({ data: structuredClone(messages) }),
-    },
-  });
-  const plugin = createOpenCodeGlinerPrunePlugin(() => sidecar);
-  const first = await plugin(
-    {
-      client: client("session-1"),
-      directory,
-    } as unknown as PluginInput,
-    undefined,
-  );
-  const second = await plugin(
-    {
-      client: client("session-2"),
-      directory,
-    } as unknown as PluginInput,
-    undefined,
-  );
-  try {
-    const response = await callPublishedBridge(directory, {
-      id: "route-1",
-      method: "status",
-      sessionID: "session-1",
-    });
-    assert.equal(response.ok, true);
-  } finally {
-    await second.dispose?.();
-    await first.dispose?.();
     await rm(directory, { recursive: true });
   }
 });

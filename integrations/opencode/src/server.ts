@@ -1,11 +1,5 @@
-import { randomUUID } from "node:crypto";
 import type { Hooks, Plugin } from "@opencode-ai/plugin";
-import {
-  bridgeSocketPath,
-  publishBridge,
-  startBridge,
-  stopBridge,
-} from "./bridge.js";
+import { bridgeSocketPath, startBridge, stopBridge } from "./bridge.js";
 import {
   applyDecisions,
   deriveGoal,
@@ -161,7 +155,7 @@ export function createOpenCodeGlinerPrunePlugin(
         .join("\n");
     };
 
-    const socketPath = bridgeSocketPath(directory, randomUUID());
+    const socketPath = bridgeSocketPath(directory);
     const bridge = await startBridge(socketPath, async (request) => {
       try {
         if (request.method === "setup") {
@@ -255,8 +249,6 @@ export function createOpenCodeGlinerPrunePlugin(
         };
       }
     });
-    await publishBridge(directory, socketPath);
-
     await client.app.log({
       body: {
         service: "opencode-gliner-prune",
@@ -288,7 +280,7 @@ export function createOpenCodeGlinerPrunePlugin(
       dispose: async () => {
         sessions.clear();
         await sidecar.stop();
-        await stopBridge(bridge, socketPath, directory);
+        await stopBridge(bridge, socketPath);
       },
     };
   };
