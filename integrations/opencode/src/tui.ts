@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { TuiPluginApi, TuiPluginModule } from "@opencode-ai/plugin/tui";
-import { callPublishedBridge } from "./bridge.js";
+import { bridgeSocketPath, callBridge } from "./bridge.js";
 
 export async function registerGlinerPruneCommand(
   api: TuiPluginApi,
@@ -71,8 +71,8 @@ export async function registerGlinerPruneCommand(
           duration: 2_000,
         });
         try {
-          const response = await callPublishedBridge(
-            api.state.path.directory,
+          const response = await callBridge(
+            bridgeSocketPath(api.state.path.directory),
             { id: randomUUID(), method: command.method, sessionID },
             command.method === "setup" ? 610_000 : 120_000,
           );

@@ -1,13 +1,5 @@
-import { createHash, randomUUID } from "node:crypto";
-import {
-  chmod,
-  mkdir,
-  readdir,
-  readFile,
-  rename,
-  unlink,
-  writeFile,
-} from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { chmod, mkdir, unlink } from "node:fs/promises";
 import { createConnection, createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -50,78 +42,6 @@ export function bridgeSocketPath(
     bridgeDirectory(),
     `${directoryDigest(directory)}-${safeInstance}.sock`,
   );
-}
-
-function bridgeLocatorPrefix(directory: string): string {
-  return `${directoryDigest(directory)}-`;
-}
-
-function bridgeLocatorPath(directory: string, socketPath: string): string {
-  const socketDigest = createHash("sha256")
-    .update(socketPath)
-    .digest("hex")
-    .slice(0, 12);
-  return join(
-    bridgeDirectory(),
-    `${bridgeLocatorPrefix(directory)}${socketDigest}.json`,
-  );
-}
-
-export async function publishBridge(
-  directory: string,
-  socketPath: string,
-): Promise<void> {
-  await ensureBridgeDirectory();
-  const locator = bridgeLocatorPath(directory, socketPath);
-  const temporary = `${locator}.${process.pid}.${randomUUID()}.tmp`;
-  await writeFile(temporary, JSON.stringify({ socketPath }), {
-    mode: 0o600,
-  });
-  await rename(temporary, locator);
-}
-
-export async function resolveBridgeSockets(
-  directory: string,
-): Promise<string[]> {
-  await ensureBridgeDirectory();
-  const prefix = bridgeLocatorPrefix(directory);
-  const files = (await readdir(bridgeDirectory())).filter(
-    (file) => file.startsWith(prefix) && file.endsWith(".json"),
-  );
-  const sockets = await Promise.all(
-    files.map(async (file) => {
-      const value = JSON.parse(
-        await readFile(join(bridgeDirectory(), file), "utf8"),
-      ) as { socketPath?: unknown };
-      if (
-        typeof value.socketPath !== "string" ||
-        !value.socketPath.startsWith(`${bridgeDirectory()}/`)
-      ) {
-        throw new Error("invalid GLiNER prune bridge locator");
-      }
-      return value.socketPath;
-    }),
-  );
-  if (sockets.length === 0) {
-    throw new Error("GLiNER prune bridge is not running");
-  }
-  return sockets;
-}
-
-export async function resolveBridgeSocket(directory: string): Promise<string> {
-  return (await resolveBridgeSockets(directory))[0]!;
-}
-
-async function unpublishBridge(
-  directory: string,
-  socketPath: string,
-): Promise<void> {
-  const locator = bridgeLocatorPath(directory, socketPath);
-  try {
-    await unlink(locator);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-  }
 }
 
 export async function startBridge(
@@ -177,13 +97,11 @@ export async function startBridge(
 export async function stopBridge(
   server: Server,
   socketPath: string,
-  directory?: string,
 ): Promise<void> {
   await new Promise<void>((resolve) => server.close(() => resolve()));
   await unlink(socketPath).catch((error: NodeJS.ErrnoException) => {
     if (error.code !== "ENOENT") throw error;
   });
-  if (directory) await unpublishBridge(directory, socketPath);
 }
 
 export async function callBridge(
@@ -222,24 +140,4 @@ export async function callBridge(
     });
     socket.once("connect", () => socket.write(`${JSON.stringify(request)}\n`));
   });
-}
-
-export async function callPublishedBridge(
-  directory: string,
-  request: BridgeRequest,
-  timeoutMs = 2_000,
-): Promise<BridgeResponse> {
-  let lastResponse: BridgeResponse | undefined;
-  let lastError: Error | undefined;
-  for (const socketPath of await resolveBridgeSockets(directory)) {
-    try {
-      const response = await callBridge(socketPath, request, timeoutMs);
-      if (response.ok) return response;
-      lastResponse = response;
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
-    }
-  }
-  if (lastResponse) return lastResponse;
-  throw lastError ?? new Error("GLiNER prune bridge is unavailable");
 }

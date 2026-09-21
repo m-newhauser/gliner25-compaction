@@ -7,10 +7,6 @@ import type { TuiPluginApi } from "@opencode-ai/plugin/tui";
 import {
   bridgeSocketPath,
   callBridge,
-  callPublishedBridge,
-  publishBridge,
-  resolveBridgeSocket,
-  resolveBridgeSockets,
   startBridge,
   stopBridge,
 } from "../src/bridge.js";
@@ -41,10 +37,15 @@ test("bridge serves a local status request", async () => {
   }
 });
 
-test("bridge instances do not unlink each other's sockets", async () => {
+test("bridge instances use process-specific sockets", async () => {
   const directory = await mkdtemp(join(tmpdir(), "gliner-prune-owners-"));
   const firstPath = bridgeSocketPath(directory, "first");
   const secondPath = bridgeSocketPath(directory, "second");
+  assert.match(
+    bridgeSocketPath(directory),
+    new RegExp(`${process.pid}\\.sock$`),
+  );
+  assert.notEqual(firstPath, secondPath);
   const firstHandler = async (request: { id: string }) => ({
     id: request.id,
     ok: true as const,
@@ -58,14 +59,8 @@ test("bridge instances do not unlink each other's sockets", async () => {
   const first = await startBridge(firstPath, firstHandler);
   const second = await startBridge(secondPath, secondHandler);
   try {
-    await publishBridge(directory, firstPath);
-    await publishBridge(directory, secondPath);
     assert.deepEqual(
-      new Set(await resolveBridgeSockets(directory)),
-      new Set([firstPath, secondPath]),
-    );
-    assert.deepEqual(
-      await callPublishedBridge(directory, {
+      await callBridge(firstPath, {
         id: "owner-1",
         method: "status",
         sessionID: "session-1",
@@ -76,10 +71,20 @@ test("bridge instances do not unlink each other's sockets", async () => {
         result: { message: "first" },
       },
     );
-    await stopBridge(first, firstPath, directory);
-    assert.equal(await resolveBridgeSocket(directory), secondPath);
-    await stopBridge(second, secondPath, directory);
-    await assert.rejects(resolveBridgeSocket(directory));
+    await stopBridge(first, firstPath);
+    assert.deepEqual(
+      await callBridge(secondPath, {
+        id: "owner-2",
+        method: "status",
+        sessionID: "session-1",
+      }),
+      {
+        id: "owner-2",
+        ok: false,
+        error: "session not found",
+      },
+    );
+    await stopBridge(second, secondPath);
   } finally {
     if (first.listening) await stopBridge(first, firstPath);
     if (second.listening) await stopBridge(second, secondPath);
@@ -152,7 +157,6 @@ test("TUI slash command reports status without submitting a prompt", async () =>
     ok: true,
     result: { message: "GLiNER prune ready" },
   }));
-  await publishBridge(directory, socketPath);
   let registered:
     | {
         onSelect?: () => void | Promise<void>;
@@ -205,7 +209,7 @@ test("TUI slash command reports status without submitting a prompt", async () =>
       },
     ]);
   } finally {
-    await stopBridge(server, socketPath, directory);
+    await stopBridge(server, socketPath);
     await rm(directory, { recursive: true });
   }
 });
