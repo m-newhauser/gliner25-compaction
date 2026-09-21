@@ -3,6 +3,7 @@ import { bridgeSocketPath, startBridge, stopBridge } from "./bridge.js";
 import {
   applyDecisions,
   deriveGoal,
+  isContinuationText,
   toCanonicalMessages,
   transcriptFingerprint,
   type OpenCodeMessage,
@@ -46,7 +47,7 @@ function isContinuation(message: OpenCodeMessage): boolean {
     .map((part) => part.text)
     .join(" ")
     .trim();
-  return /^continue[.! ]*$/i.test(text);
+  return isContinuationText(text);
 }
 
 export function createMessageTransform(

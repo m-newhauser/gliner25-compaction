@@ -140,4 +140,17 @@ test("goal and fingerprint include recent user intent and optional focus", () =>
     transcriptFingerprint(messages, ""),
     transcriptFingerprint(messages, "new focus"),
   );
+
+  const continued = [
+    ...messages,
+    {
+      info: { id: "user-2", sessionID: "session-1", role: "user" },
+      parts: [{ type: "text", text: "Continue." }],
+    },
+    {
+      info: { id: "user-3", sessionID: "session-1", role: "user" },
+      parts: [{ type: "text", text: "continue" }],
+    },
+  ];
+  assert.equal(deriveGoal(continued), "Fix the parser test.");
 });

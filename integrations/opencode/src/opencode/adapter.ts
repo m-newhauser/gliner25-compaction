@@ -36,6 +36,10 @@ function toolResultText(part: OpenCodePart): string | undefined {
   return undefined;
 }
 
+export function isContinuationText(text: string): boolean {
+  return /^continue[.! ]*$/i.test(text.trim());
+}
+
 export function toCanonicalMessages(
   messages: OpenCodeMessage[],
 ): CanonicalMessage[] {
@@ -171,6 +175,7 @@ export function deriveGoal(messages: OpenCodeMessage[], focus = ""): string {
         .map((part) => part.text!.trim())
         .filter(Boolean),
     )
+    .filter((text) => !isContinuationText(text))
     .slice(-3)
     .join("\n");
   return [recentUserText, focus.trim()].filter(Boolean).join("\n\n");

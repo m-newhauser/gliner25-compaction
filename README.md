@@ -67,6 +67,7 @@ npm install
 npm run typecheck
 npm run test:integrations
 npm run build
+npm run test:release:opencode
 ```
 
 Run the real local checkpoint integration test:
