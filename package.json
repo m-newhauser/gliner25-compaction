@@ -11,7 +11,8 @@
     "typecheck": "tsc -p integrations/opencode/tsconfig.json && tsc -p integrations/claude-code/tsconfig.json",
     "test:opencode": "tsx --test integrations/opencode/test/**/*.test.ts",
     "test:claude": "tsx --test integrations/claude-code/test/**/*.test.ts",
-    "test:integrations": "npm run test:opencode && npm run test:claude"
+    "test:integrations": "npm run test:opencode && npm run test:claude",
+    "test:release:opencode": "node scripts/verify_opencode_release.mjs"
   },
   "devDependencies": {
     "@opencode-ai/plugin": "1.18.31",

@@ -82,7 +82,7 @@ export class SidecarClient {
           "--project",
           this.#options.projectDirectory,
           "python",
-          "scripts/download_model.py",
+          join(this.#options.projectDirectory, "scripts", "download_model.py"),
         ],
         {
           stdio: ["ignore", "pipe", "pipe"],

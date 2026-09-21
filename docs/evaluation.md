@@ -34,6 +34,18 @@ GLINER25_LIVE=1 npm run test:opencode
 This loads `fastino/gliner2.5-small-v1` locally and enforces the V1 latency
 ceiling.
 
+## Packed-artifact release gate
+
+```sh
+npm run test:release:opencode
+```
+
+This packs and installs the npm artifact into an isolated directory, runs
+setup from an unrelated working directory, analyzes a large synthetic
+transcript, applies pruning, verifies protected facts and an unchanged durable
+hash, resets, and confirms inactive status. Run it before every OpenCode npm
+release.
+
 ## Fixture evaluation
 
 ```sh
