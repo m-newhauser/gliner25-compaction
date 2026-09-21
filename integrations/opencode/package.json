@@ -4,6 +4,26 @@
   "description": "Local GLiNER2.5 context pruning for OpenCode",
   "type": "module",
   "license": "Apache-2.0",
+  "author": "Mary Newhauser",
+  "keywords": [
+    "opencode",
+    "gliner",
+    "context-pruning",
+    "local-ai",
+    "plugin"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/m-newhauser/gliner25-compaction.git",
+    "directory": "integrations/opencode"
+  },
+  "homepage": "https://github.com/m-newhauser/gliner25-compaction#readme",
+  "bugs": {
+    "url": "https://github.com/m-newhauser/gliner25-compaction/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "files": [
     "dist",
     "README.md"
