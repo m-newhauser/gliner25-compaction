@@ -42,6 +42,13 @@ class ToolInteraction:
 
 
 @dataclass(frozen=True)
+class AnalysisRequest:
+    interaction: ToolInteraction
+    goal: str
+    nearby_text: str
+
+
+@dataclass(frozen=True)
 class EvidenceSpan:
     start: int
     end: int
@@ -49,6 +56,14 @@ class EvidenceSpan:
     kind: str
     confidence: float
     status: str | None = None
+
+
+@dataclass(frozen=True)
+class AnalysisResult:
+    action: RetentionAction
+    confidence: float
+    reasons: tuple[str, ...]
+    evidence: tuple[EvidenceSpan, ...]
 
 
 @dataclass(frozen=True)

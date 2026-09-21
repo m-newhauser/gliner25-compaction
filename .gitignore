@@ -8,3 +8,9 @@ wheels/
 
 # Virtual environments
 .venv
+
+# JavaScript tooling and local plugin state
+node_modules/
+integrations/*/node_modules/
+.opencode/
+.tmp/

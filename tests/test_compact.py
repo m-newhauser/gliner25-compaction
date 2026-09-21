@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 from gliner25_context_compaction import (
     EvidenceSpan,
     Message,
@@ -13,7 +15,7 @@ class FakeAnalyzer:
     def classify(self, interaction, *, goal, nearby_text):
         if interaction.tool_use.id == "read-old":
             return RetentionAction.DROP, 0.95, ("superseded",)
-        return RetentionAction.KEEP_EVIDENCE, 0.9, ("unresolved_failure",)
+        return RetentionAction.KEEP_EVIDENCE, 0.9, ("safely_rerunnable",)
 
     def extract_evidence(self, text):
         value = "expected 2, received 3"
@@ -45,7 +47,7 @@ def test_compaction_drops_stale_call_and_preserves_exact_evidence():
         ),
         Message(
             role="assistant",
-            tool_uses=(ToolUse("test", "Test", {"target": "parser"}),),
+            tool_uses=(ToolUse("test", "read", {"target": "parser"}),),
         ),
         Message(
             role="user",
@@ -106,7 +108,7 @@ def test_low_confidence_prediction_fails_closed():
     assert result.messages == messages
 
 
-def test_protected_error_evidence_overrides_uncertain_retention():
+def test_uncertain_retention_keeps_full_even_with_protected_evidence():
     class UncertainAnalyzer(FakeAnalyzer):
         def classify(self, interaction, *, goal, nearby_text):
             return RetentionAction.DROP, 0.51, ()
@@ -116,7 +118,7 @@ def test_protected_error_evidence_overrides_uncertain_retention():
         Message(role="user", text="Fix the test"),
         Message(
             role="assistant",
-            tool_uses=(ToolUse("test", "Test", {"target": "parser"}),),
+            tool_uses=(ToolUse("test", "read", {"target": "parser"}),),
         ),
         Message(
             role="user",
@@ -131,8 +133,8 @@ def test_protected_error_evidence_overrides_uncertain_retention():
         preserve_recent=0,
         context_characters=10,
     )
-    assert result.decisions[0].action is RetentionAction.KEEP_EVIDENCE
-    assert "protected_evidence" in result.decisions[0].reasons
+    assert result.decisions[0].action is RetentionAction.KEEP_FULL
+    assert "uncertain" in result.decisions[0].reasons
     kept = next(
         item
         for message in result.messages
@@ -140,11 +142,187 @@ def test_protected_error_evidence_overrides_uncertain_retention():
         if item.tool_use_id == "test"
     )
     assert "expected 2, received 3" in kept.text
-    assert len(kept.text) < len(result_text)
+    assert kept.text == result_text
+
+
+def test_keep_full_is_never_downgraded_by_extracted_evidence():
+    class KeepAnalyzer(FakeAnalyzer):
+        def classify(self, interaction, *, goal, nearby_text):
+            return RetentionAction.KEEP_FULL, 0.95, ("current_dependency",)
+
+    result_text = "expected 2, received 3"
+    messages = (
+        Message(role="user", text="Fix the test"),
+        Message(
+            role="assistant",
+            tool_uses=(ToolUse("read", "read", {"filePath": "failure.log"}),),
+            tool_results=(ToolResult("read", result_text, is_error=True),),
+        ),
+        Message(role="user", text="Continue"),
+    )
+    result = compact(
+        messages,
+        KeepAnalyzer(),
+        goal="Fix the test",
+        preserve_recent=0,
+    )
+    assert result.decisions[0].action is RetentionAction.KEEP_FULL
+    assert result.messages == messages
 
 
 def test_shell_policy_only_pins_commands_not_known_to_be_read_only():
-    assert not is_mutating("Bash", {"command": "npm test"})
+    assert is_mutating("Bash", {"command": "npm test"})
     assert not is_mutating("Shell", {"command": "git status --short"})
     assert is_mutating("Bash", {"command": "rm generated.txt"})
     assert is_mutating("Edit", {"file_path": "src/a.py"})
+    assert is_mutating("edit", {"filePath": "src/a.py"})
+    assert is_mutating("question", {"questions": []})
+    assert is_mutating("custom_mcp_tool", {})
+    assert is_mutating("bash", {"command": "git status && rm important.txt"})
+    assert is_mutating("bash", {"command": "git diff --output=patch.txt"})
+    assert is_mutating("bash", {"command": "rg --pre 'rm -f important.txt' token"})
+
+
+def test_destructive_action_with_current_dependency_fails_closed():
+    class ContradictoryAnalyzer(FakeAnalyzer):
+        def classify(self, interaction, *, goal, nearby_text):
+            return RetentionAction.DROP, 0.9, ("current_dependency",)
+
+    messages = (
+        Message(role="user", text="Start"),
+        Message(
+            role="assistant",
+            tool_uses=(ToolUse("x", "read", {"filePath": "x.py"}),),
+            tool_results=(ToolResult("x", "important"),),
+        ),
+        Message(role="user", text="Continue"),
+    )
+    result = compact(
+        messages,
+        ContradictoryAnalyzer(),
+        goal="Continue",
+        preserve_recent=0,
+        minimum_confidence=0.35,
+    )
+    assert result.decisions[0].action is RetentionAction.KEEP_FULL
+    assert "contradictory_destructive_decision" in result.decisions[0].reasons
+
+    class ContradictoryEvidenceAnalyzer(ContradictoryAnalyzer):
+        def classify(self, interaction, *, goal, nearby_text):
+            return RetentionAction.KEEP_EVIDENCE, 0.9, ("current_dependency",)
+
+        def extract_evidence(self, text):
+            return (
+                EvidenceSpan(
+                    start=0,
+                    end=len(text),
+                    text=text,
+                    kind="requirement_subject",
+                    confidence=0.99,
+                ),
+            )
+
+    result = compact(
+        messages,
+        ContradictoryEvidenceAnalyzer(),
+        goal="Continue",
+        preserve_recent=0,
+        minimum_confidence=0.35,
+    )
+    assert result.decisions[0].action is RetentionAction.KEEP_FULL
+
+
+def test_error_without_protected_evidence_fails_closed():
+    class DropAnalyzer(FakeAnalyzer):
+        def classify(self, interaction, *, goal, nearby_text):
+            return RetentionAction.DROP, 0.9, ("superseded",)
+
+        def extract_evidence(self, text):
+            return ()
+
+    messages = (
+        Message(role="user", text="Start"),
+        Message(
+            role="assistant",
+            tool_uses=(ToolUse("x", "read", {"filePath": "missing.py"}),),
+            tool_results=(ToolResult("x", "process failed", is_error=True),),
+        ),
+        Message(role="user", text="Continue"),
+    )
+    result = compact(
+        messages,
+        DropAnalyzer(),
+        goal="Continue",
+        preserve_recent=0,
+        minimum_confidence=0.35,
+    )
+    assert result.decisions[0].action is RetentionAction.KEEP_FULL
+    assert "unresolved_error_without_evidence" in result.decisions[0].reasons
+
+
+def test_identical_reads_are_superseded_only_without_an_intervening_mutation():
+    class KeepAnalyzer(FakeAnalyzer):
+        def classify(self, interaction, *, goal, nearby_text):
+            return RetentionAction.KEEP_FULL, 0.99, ("current_dependency",)
+
+        def extract_evidence(self, text):
+            return ()
+
+    repeated = (
+        Message(role="user", text="Inspect"),
+        Message(
+            role="assistant",
+            tool_uses=(ToolUse("read-1", "read", {"filePath": "x.py"}),),
+            tool_results=(ToolResult("read-1", "same"),),
+        ),
+        Message(
+            role="assistant",
+            tool_uses=(ToolUse("read-2", "read", {"filePath": "x.py"}),),
+            tool_results=(ToolResult("read-2", "same"),),
+        ),
+        Message(role="user", text="Continue"),
+    )
+    result = compact(
+        repeated,
+        KeepAnalyzer(),
+        goal="Inspect",
+        preserve_recent=0,
+    )
+    assert result.decisions[0].action is RetentionAction.DROP
+    assert result.decisions[0].reasons == ("deterministic_superseded_read",)
+
+    changed_output = (
+        repeated[0],
+        replace(
+            repeated[1],
+            tool_results=(ToolResult("read-1", "old"),),
+        ),
+        repeated[2],
+        repeated[3],
+    )
+    result = compact(
+        changed_output,
+        KeepAnalyzer(),
+        goal="Inspect",
+        preserve_recent=0,
+    )
+    assert result.decisions[0].action is RetentionAction.KEEP_FULL
+
+    with_mutation = (
+        repeated[0],
+        repeated[1],
+        Message(
+            role="assistant",
+            tool_uses=(ToolUse("edit", "edit", {"filePath": "x.py"}),),
+            tool_results=(ToolResult("edit", "updated"),),
+        ),
+        repeated[2],
+        repeated[3],
+    )
+    result = compact(
+        with_mutation,
+        KeepAnalyzer(),
+        goal="Inspect",
+        preserve_recent=0,
+    )
+    assert result.decisions[0].action is RetentionAction.KEEP_FULL

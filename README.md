@@ -1,36 +1,82 @@
-# GLiNER2.5 Context Compaction
+# GLiNER2.5 Local Context
 
-Experimental verbatim context compaction for coding-agent transcripts.
-GLiNER2.5 chooses one retention action per completed tool interaction and
-extracts exact evidence spans when a full result is unnecessary.
+Local, extractive context pruning for coding agents. GLiNER2.5 classifies
+completed tool interactions and retains exact evidence without generating a
+summary or sending transcript content to an external model.
 
-## V1 policy
+## Choose your harness
 
-- Keep the initial and most recent messages.
-- Keep mutating tool calls and results.
-- Extract evidence before classification and promote validated high-confidence
-  diagnostics, requirements, URLs, and generated identifiers.
-- Fail closed on uncertain model predictions.
-- Rebuild excerpts only from original character spans.
+### OpenCode
+
+Manual, non-destructive pruning of the provider-bound context.
+
+- Package: `opencode-gliner-prune`
+- Commands: setup, preview, apply, status, and reset
+- Guide: [`integrations/opencode/README.md`](integrations/opencode/README.md)
+- Status: developer preview for OpenCode 1.18.31 on Apple Silicon macOS
+
+### Claude Code
+
+Evidence-first pruning during Claude Code's native compaction lifecycle.
+
+- Hook: `session.compact`
+- Modes: shadow, apply, host fallback, or unchanged fallback
+- Guide:
+  [`integrations/claude-code/README.md`](integrations/claude-code/README.md)
+- Status: local plugin preview
+
+### Pi
+
+Planned adapter using the same canonical transcript and sidecar protocol.
+
+- Guide: [`integrations/pi/README.md`](integrations/pi/README.md)
+- Status: not implemented
+
+## Shared behavior
+
+- Preserve recent messages, mutations, unknown tools, and arbitrary shell
+  commands.
+- Fail closed on low-confidence or malformed predictions.
+- Rebuild excerpts only from validated original character spans.
 - Preserve tool-call/result pairing.
+- Default to `fastino/gliner2.5-small-v1`.
 
 Retention actions are `keep_full`, `keep_evidence`, `keep_call_only`, and
-`drop`. A generic transcript model is the core format; `claude.py` converts
-Claude Code session messages at the boundary.
+`drop`.
 
-## Setup
+## Architecture and safety
+
+- [`docs/architecture.md`](docs/architecture.md)
+- [`docs/safety-policy.md`](docs/safety-policy.md)
+- [`docs/sidecar-protocol.md`](docs/sidecar-protocol.md)
+- [`docs/evaluation.md`](docs/evaluation.md)
+- [`docs/compatibility.md`](docs/compatibility.md)
+
+## Development
 
 ```sh
 uv sync
 uv run python scripts/download_model.py
 uv run pytest
+
+npm install
+npm run typecheck
+npm run test:integrations
+npm run build
 ```
 
-The default local checkpoint is `fastino/gliner2.5-base-v1`.
+Run the real local checkpoint integration test:
 
-## Status
+```sh
+GLINER25_LIVE=1 npm run test:opencode
+```
 
-This first milestone contains the transcript model, Claude adapter, GLiNER
-classification/evidence schemas, deterministic compactor, and unit tests with
-a fake analyzer. Host hook integration and domain tuning are intentionally
-deferred.
+Reproduce the synthetic fixture evaluation:
+
+```sh
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
+  uv run python scripts/evaluate_fixture.py
+```
+
+OpenCode demo guidance lives in
+[`demo/opencode/STORYBOARD.md`](demo/opencode/STORYBOARD.md).
