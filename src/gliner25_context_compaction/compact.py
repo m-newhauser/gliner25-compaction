@@ -171,6 +171,17 @@ DIAGNOSTIC_MARKER = re.compile(
     r"\b(?:FAIL|FAILED|ERROR|Expected|Received|Traceback|AssertionError)\b",
     re.IGNORECASE,
 )
+INDEPENDENT_DIAGNOSTIC_MARKER = re.compile(
+    r"\b(?:FAIL|ERROR|Traceback|AssertionError)\b",
+    re.IGNORECASE,
+)
+FILE_LOCATION = re.compile(
+    r"(?<![:/])\b(?:[A-Za-z]:[\\/])?(?:[\w.-]+[\\/])*"
+    r"[\w.-]+\.[A-Za-z][A-Za-z0-9]*:\d+(?::\d+)?\b"
+)
+DIAGNOSTIC_OUTPUT_MINIMUM = 4_000
+DIAGNOSTIC_PROXIMITY = 500
+DIAGNOSTIC_EVIDENCE_CONFIDENCE = 0.8
 
 
 def is_protected_evidence(
@@ -193,6 +204,100 @@ def is_protected_evidence(
             and any(character.isdigit() for character in span.text)
         )
     return span.kind == "requirement_subject"
+
+
+def _line_start(text: str, offset: int) -> int:
+    newline = text.rfind("\n", 0, offset)
+    return 0 if newline < 0 else newline + 1
+
+
+def _line_end(text: str, offset: int) -> int:
+    newline = text.find("\n", offset)
+    return len(text) if newline < 0 else newline
+
+
+def strict_diagnostic_block(
+    text: str,
+    action: RetentionAction,
+    spans: Sequence[EvidenceSpan],
+) -> EvidenceSpan | None:
+    if len(text) <= DIAGNOSTIC_OUTPUT_MINIMUM or action is RetentionAction.KEEP_FULL:
+        return None
+    valid_spans = tuple(
+        span
+        for span in spans
+        if 0 <= span.start <= span.end <= len(text)
+        and text[span.start : span.end] == span.text
+    )
+    expected = tuple(
+        span
+        for span in valid_spans
+        if span.kind == "expected_value"
+        and span.confidence >= DIAGNOSTIC_EVIDENCE_CONFIDENCE
+    )
+    received = tuple(
+        span
+        for span in valid_spans
+        if span.kind == "received_value"
+        and span.confidence >= DIAGNOSTIC_EVIDENCE_CONFIDENCE
+    )
+    markers = tuple(INDEPENDENT_DIAGNOSTIC_MARKER.finditer(text))
+    locations = tuple(FILE_LOCATION.finditer(text))
+    candidates: list[tuple[int, int, EvidenceSpan, EvidenceSpan]] = []
+    for expected_span in expected:
+        prior_markers = tuple(
+            marker
+            for marker in markers
+            if 0 <= expected_span.start - marker.end() <= DIAGNOSTIC_PROXIMITY
+        )
+        if not prior_markers:
+            continue
+        marker = prior_markers[-1]
+        for received_span in received:
+            if not (
+                0 <= received_span.start - expected_span.end
+                <= DIAGNOSTIC_PROXIMITY
+            ):
+                continue
+            following_locations = tuple(
+                location
+                for location in locations
+                if received_span.start <= location.start()
+                and location.start() - received_span.end <= DIAGNOSTIC_PROXIMITY
+            )
+            if not following_locations:
+                continue
+            location = following_locations[0]
+            candidates.append(
+                (
+                    _line_start(text, marker.start()),
+                    _line_end(text, location.end()),
+                    expected_span,
+                    received_span,
+                )
+            )
+    unique = {
+        (start, end, expected_span.start, received_span.start): (
+            start,
+            end,
+            expected_span,
+            received_span,
+        )
+        for start, end, expected_span, received_span in candidates
+    }
+    if len(unique) != 1:
+        return None
+    start, end, expected_span, received_span = next(iter(unique.values()))
+    block = text[start:end]
+    if not block or text[start:end] != block:
+        return None
+    return EvidenceSpan(
+        start=start,
+        end=end,
+        text=block,
+        kind="failing_test_or_error_location",
+        confidence=min(expected_span.confidence, received_span.confidence),
+    )
 
 
 def _legacy_analysis(analyzer: object, request: AnalysisRequest) -> AnalysisResult:
@@ -267,6 +372,11 @@ def compact(
             )
         else:
             analysis = analysis_by_id[interaction.tool_use.id]
+            diagnostic = strict_diagnostic_block(
+                interaction.result.text,
+                analysis.action,
+                analysis.evidence,
+            )
             evidence = tuple(
                 span
                 for span in analysis.evidence
@@ -286,7 +396,13 @@ def compact(
                 analysis.confidence,
                 analysis.reasons,
             )
-            if confidence < minimum_confidence:
+            if diagnostic is not None:
+                action, reasons, evidence = (
+                    RetentionAction.KEEP_EVIDENCE,
+                    (*reasons, "strict_diagnostic_block"),
+                    (diagnostic,),
+                )
+            elif confidence < minimum_confidence:
                 action, reasons = RetentionAction.KEEP_FULL, (*reasons, "uncertain")
             elif action is RetentionAction.KEEP_FULL:
                 pass

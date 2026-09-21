@@ -122,24 +122,71 @@ const messages = [
     ],
   })),
 ];
-const durableHash = () =>
-  createHash("sha256").update(JSON.stringify(messages)).digest("hex");
-const beforeHash = durableHash();
+const durableStore = new Map([[sessionID, structuredClone(messages)]]);
+const durableMutationCalls = [];
+const durableHash = (value) =>
+  createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const appLogs = [];
+const sessionClient = new Proxy(
+  {
+    get: async ({ path }) =>
+      durableStore.has(path.id)
+        ? { data: { id: path.id } }
+        : { error: { name: "NotFound" } },
+    messages: async ({ path }) => ({
+      data: structuredClone(durableStore.get(path.id) ?? []),
+    }),
+  },
+  {
+    get(target, property, receiver) {
+      if (Reflect.has(target, property)) {
+        return Reflect.get(target, property, receiver);
+      }
+      if (typeof property !== "string") return undefined;
+      return async (...args) => {
+        durableMutationCalls.push({ method: property, args });
+        throw new Error(`unexpected durable session mutation: ${property}`);
+      };
+    },
+  },
+);
 const client = {
   app: {
     log: async (entry) => {
       appLogs.push(entry);
     },
   },
-  session: {
-    get: async ({ path }) =>
-      path.id === sessionID
-        ? { data: { id: sessionID } }
-        : { error: { name: "NotFound" } },
-    messages: async () => ({ data: structuredClone(messages) }),
-  },
+  session: sessionClient,
 };
+const fetchDurableMessages = async () => {
+  const response = await client.session.messages({ path: { id: sessionID } });
+  return response.data;
+};
+const beforeHash = durableHash(await fetchDurableMessages());
+
+const canonicalPayloadCharacters = (source) =>
+  source.reduce(
+    (total, message) =>
+      total +
+      message.parts.reduce((partTotal, part) => {
+        if (part.type === "text" && part.ignored !== true) {
+          return partTotal + (part.text?.length ?? 0);
+        }
+        if (part.type !== "tool") return partTotal;
+        const result =
+          part.state?.status === "completed"
+            ? part.state.output ?? ""
+            : part.state?.status === "error"
+              ? part.state.error ?? ""
+              : "";
+        return (
+          partTotal +
+          JSON.stringify(part.state?.input ?? {}).length +
+          result.length
+        );
+      }, 0),
+    0,
+  );
 
 process.chdir(workspace);
 const server = await serverModule.OpenCodeGlinerPrunePlugin({
@@ -226,7 +273,29 @@ try {
   assert.match(transformedText, /Received quantity: 120/);
   assert.match(transformedText, /tests\/parser\.test\.mjs:6:10/);
   assert.match(transformedText, /Legacy compatibility fixture\. Do not modify\./);
-  assert.equal(durableHash(), beforeHash, "durable messages changed after apply");
+  const actualBefore = canonicalPayloadCharacters(messages);
+  const actualAfter = canonicalPayloadCharacters(transformed);
+  const actualReduction = 1 - actualAfter / actualBefore;
+  assert.ok(
+    actualReduction >= 0.7,
+    `actual transformed reduction ${actualReduction.toFixed(3)} is below 0.7`,
+  );
+  report.actualCharacters = {
+    before: actualBefore,
+    after: actualAfter,
+    reduction: actualReduction,
+  };
+  const afterApplyHash = durableHash(await fetchDurableMessages());
+  assert.equal(
+    afterApplyHash,
+    beforeHash,
+    "durable messages changed after apply",
+  );
+  assert.deepEqual(
+    durableMutationCalls,
+    [],
+    "apply attempted a durable session mutation",
+  );
 
   report.reset = await run("reset");
   assert.match(report.reset.message, /full context restored/);
@@ -237,13 +306,21 @@ try {
   const resetOutput = { messages: structuredClone(messages) };
   await server["experimental.chat.messages.transform"]({}, resetOutput);
   assert.deepEqual(resetOutput.messages, messages);
-  assert.equal(durableHash(), beforeHash, "durable messages changed after reset");
-  report.afterHash = durableHash();
+  const afterResetHash = durableHash(await fetchDurableMessages());
+  assert.equal(afterResetHash, beforeHash, "durable messages changed after reset");
+  assert.deepEqual(
+    durableMutationCalls,
+    [],
+    "reset attempted a durable session mutation",
+  );
+  report.afterHash = afterResetHash;
+  report.durableMutationCalls = durableMutationCalls;
   report.transformedToolCount = transformedTools.length;
   report.originalToolCount = 5;
   report.protectedFacts = {
     expected: true,
     received: true,
+    location: true,
     legacyConstraint: true,
   };
   report.appLogEntries = appLogs.length;
