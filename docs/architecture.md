@@ -31,11 +31,10 @@ compatibility boundary for the existing Claude message shape.
 The OpenCode integration has two entrypoints:
 
 - A server plugin transforms only OpenCode’s cloned provider context.
-- A TUI plugin exposes no-LLM setup, preview, apply, status, and reset
-  commands.
+- A TUI plugin exposes one no-LLM `/gliner-prune` command.
 
 A private Unix-socket bridge connects the TUI process to the server process.
-The server owns session state and one warm Python sidecar.
+The server owns session state and eagerly prepares one warm Python sidecar.
 
 ## Claude Code
 

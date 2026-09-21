@@ -127,3 +127,38 @@ exec sleep 10
     await rm(directory, { recursive: true });
   }
 });
+
+test("analysis timeout terminates the busy sidecar", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "gliner-prune-timeout-"));
+  const bin = join(directory, "bin");
+  await mkdir(join(directory, ".venv"), { recursive: true });
+  await mkdir(bin);
+  await writeFile(
+    join(bin, "uv"),
+    `#!/bin/sh
+printf '{"v":1,"type":"ready"}\\n'
+read line
+exec sleep 10
+`,
+  );
+  await chmod(join(bin, "uv"), 0o700);
+  const originalPath = process.env.PATH;
+  process.env.PATH = `${bin}:${originalPath ?? ""}`;
+  const client = new SidecarClient({
+    projectDirectory: directory,
+    startupTimeoutMs: 1_000,
+    requestTimeoutMs: 25,
+  });
+  try {
+    await assert.rejects(
+      client.analyze({ messages: [], goal: "test" }),
+      /analysis timed out/,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(client.running, false);
+  } finally {
+    await client.stop();
+    process.env.PATH = originalPath;
+    await rm(directory, { recursive: true });
+  }
+});

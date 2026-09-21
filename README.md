@@ -15,7 +15,7 @@ Model weights are downloaded during setup and use the Apache-2.0 license.
 Manual, non-destructive pruning of the provider-bound context.
 
 - Package: `opencode-gliner-prune`
-- Commands: setup, preview, apply, status, and reset
+- Command: `/gliner-prune` (model loading starts automatically)
 - Guide: [`integrations/opencode/README.md`](integrations/opencode/README.md)
 - Status: developer preview for OpenCode 1.18.31 on Apple Silicon macOS
 

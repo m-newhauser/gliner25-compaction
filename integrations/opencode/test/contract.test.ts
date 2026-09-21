@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
+import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -92,6 +93,40 @@ test("bridge instances use process-specific sockets", async () => {
   }
 });
 
+test("bridge tolerates a client disconnect before the response", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "gliner-prune-disconnect-"));
+  const socketPath = bridgeSocketPath(directory);
+  let handlingStarted: () => void = () => {};
+  const handling = new Promise<void>((resolve) => {
+    handlingStarted = resolve;
+  });
+  const server = await startBridge(socketPath, async (request) => {
+    handlingStarted();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    return { id: request.id, ok: true, result: { message: "ready" } };
+  });
+  try {
+    const socket = createConnection(socketPath);
+    socket.on("error", () => {});
+    await new Promise<void>((resolve) => socket.once("connect", resolve));
+    socket.write(
+      `${JSON.stringify({ id: "gone", method: "status" })}\n`,
+    );
+    await handling;
+    socket.destroy();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const response = await callBridge(socketPath, {
+      id: "still-alive",
+      method: "status",
+    });
+    assert.equal(response.ok, true);
+  } finally {
+    await stopBridge(server, socketPath);
+    await rm(directory, { recursive: true });
+  }
+});
+
 test("message transform edits only the provider-bound clone", async () => {
   const original = [
     {
@@ -149,28 +184,35 @@ test("message transform edits only the provider-bound clone", async () => {
   assert.equal(original[0]?.parts[0]?.state.output, "full output");
 });
 
-test("TUI slash command reports status without submitting a prompt", async () => {
+test("TUI exposes one prune command without submitting a prompt", async () => {
   const directory = await mkdtemp(join(tmpdir(), "gliner-prune-tui-"));
   const socketPath = bridgeSocketPath(directory);
-  const server = await startBridge(socketPath, async (request) => ({
-    id: request.id,
-    ok: true,
-    result: { message: "GLiNER prune ready" },
-  }));
-  let registered:
-    | {
-        onSelect?: () => void | Promise<void>;
-      }
-    | undefined;
+  const server = await startBridge(socketPath, async (request) => {
+    assert.equal(request.method, "apply");
+    return {
+      id: request.id,
+      ok: true,
+      result: { message: "Context pruned by 80.0%" },
+    };
+  });
+  let registered: Array<{
+    value: string;
+    slash: { name: string };
+    onSelect?: () => void | Promise<void>;
+  }> = [];
   const toasts: Array<{ message: string }> = [];
   let clientAccesses = 0;
 
   const api = {
     command: {
       register: (
-        callback: () => Array<{ onSelect?: () => void | Promise<void> }>,
+        callback: () => Array<{
+          value: string;
+          slash: { name: string };
+          onSelect?: () => void | Promise<void>;
+        }>,
       ) => {
-        registered = callback()[0];
+        registered = callback();
         return () => {};
       },
     },
@@ -193,19 +235,22 @@ test("TUI slash command reports status without submitting a prompt", async () =>
 
   try {
     await registerGlinerPruneCommand(api);
-    await registered?.onSelect?.();
+    assert.equal(registered.length, 1);
+    assert.equal(registered[0]?.value, "gliner-prune.apply");
+    assert.equal(registered[0]?.slash.name, "gliner-prune");
+    await registered[0]?.onSelect?.();
     assert.equal(clientAccesses, 0);
     assert.deepEqual(toasts, [
       {
         variant: "info",
         title: "GLiNER Prune",
-        message: "Analyzing tool interactions locally…",
+        message: "Preparing the local model and pruning context…",
         duration: 2_000,
       },
       {
         variant: "success",
         title: "GLiNER Prune",
-        message: "GLiNER prune ready",
+        message: "Context pruned by 80.0%",
       },
     ]);
   } finally {

@@ -24,18 +24,20 @@ Add the npm package to `opencode.json`:
 }
 ```
 
-Restart OpenCode, then run:
+Restart OpenCode. The plugin immediately prepares and loads the local model in
+the background. On first launch it downloads the checkpoint; subsequent loading
+and inference are local.
+
+When context has accumulated, run:
 
 ```text
-/gliner-prune-setup
-/gliner-prune-preview
 /gliner-prune
 ```
 
-Other commands:
-
-- `/gliner-prune-status`
-- `/gliner-prune-reset`
+The completion toast reports the reduction, changed-action counts, preserved
+evidence, and confirms that stored history was not modified. A new substantive
+prompt automatically restores full context; exact continuations keep pruning
+active.
 
 For local development, build from the repository root and use:
 
@@ -48,13 +50,8 @@ For local development, build from the repository root and use:
 }
 ```
 
-OpenCode 1.18's direct TUI command API does not pass trailing slash-command
-arguments to plugin handlers. V1 therefore uses separate hyphenated commands
-instead of `/gliner-prune preview`; this keeps every plugin command out of the
-LLM prompt path.
-
-Setup downloads and warms the small checkpoint. Transcript content stays on
-the machine; subsequent inference is forced offline.
+Transcript content stays on the machine and inference is forced offline after
+the checkpoint is available.
 
 ## Safety model
 
@@ -64,10 +61,6 @@ the machine; subsequent inference is forced offline.
   narrow observational allowlist.
 - Low-confidence or malformed model output resolves to `keep_full`.
 - A worker crash, timeout, or invalid span sends the original full context.
-- Preview decisions are cached and promoted only when the transcript
-  fingerprint still matches.
-- Reset immediately restores full provider context because durable history was
-  never modified.
 - A substantive new user prompt clears active pruning automatically. Only an
   explicit continuation such as `Continue.` carries decisions forward.
 

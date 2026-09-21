@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import type { TuiPluginApi, TuiPluginModule } from "@opencode-ai/plugin/tui";
 import { bridgeSocketPath, callBridge } from "./bridge.js";
 
+const PRUNE_TIMEOUT_MS = 800_000;
+
 export async function registerGlinerPruneCommand(
   api: TuiPluginApi,
 ): Promise<void> {
@@ -11,46 +13,13 @@ export async function registerGlinerPruneCommand(
     );
   }
 
-  const commands = [
+  const dispose = api.command.register(() => [
     {
-      method: "apply" as const,
-      title: "GLiNER Prune: Apply",
-      slash: "gliner-prune",
-      description: "Apply local context pruning",
-    },
-    {
-      method: "preview" as const,
-      title: "GLiNER Prune: Preview",
-      slash: "gliner-prune-preview",
-      description: "Preview local context pruning",
-    },
-    {
-      method: "status" as const,
-      title: "GLiNER Prune: Status",
-      slash: "gliner-prune-status",
-      description: "Show local context-pruning status",
-    },
-    {
-      method: "reset" as const,
-      title: "GLiNER Prune: Reset",
-      slash: "gliner-prune-reset",
-      description: "Restore full context",
-    },
-    {
-      method: "setup" as const,
-      title: "GLiNER Prune: Setup",
-      slash: "gliner-prune-setup",
-      description: "Download and verify the local small checkpoint",
-    },
-  ];
-
-  const dispose = api.command.register(() =>
-    commands.map((command) => ({
-      title: command.title,
-      value: `gliner-prune.${command.method}`,
-      description: command.description,
+      title: "Prune context locally",
+      value: "gliner-prune.apply",
+      description: "Prune old tool output while preserving exact evidence",
       category: "GLiNER",
-      slash: { name: command.slash },
+      slash: { name: "gliner-prune" },
       onSelect: async () => {
         const route = api.route.current;
         const sessionID =
@@ -62,19 +31,14 @@ export async function registerGlinerPruneCommand(
         api.ui.toast({
           variant: "info",
           title: "GLiNER Prune",
-          message:
-            command.method === "setup"
-              ? "Preparing the local model…"
-              : command.method === "preview" || command.method === "apply"
-                ? "Analyzing tool interactions locally…"
-                : "Working…",
+          message: "Preparing the local model and pruning context…",
           duration: 2_000,
         });
         try {
           const response = await callBridge(
             bridgeSocketPath(api.state.path.directory),
-            { id: randomUUID(), method: command.method, sessionID },
-            command.method === "setup" ? 610_000 : 120_000,
+            { id: randomUUID(), method: "apply", sessionID },
+            PRUNE_TIMEOUT_MS,
           );
           api.ui.toast({
             variant: response.ok ? "success" : "error",
@@ -85,12 +49,15 @@ export async function registerGlinerPruneCommand(
           api.ui.toast({
             variant: "error",
             title: "GLiNER Prune",
-            message: error instanceof Error ? error.message : String(error),
+            message:
+              error instanceof Error
+                ? error.message
+                : "GLiNER pruning failed",
           });
         }
       },
-    })),
-  );
+    },
+  ]);
   api.lifecycle.onDispose(dispose);
 }
 

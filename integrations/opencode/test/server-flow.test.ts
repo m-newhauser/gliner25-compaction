@@ -34,12 +34,15 @@ const messages = [
   },
 ];
 
-test("preview is cached, apply is virtual, and reset restores full context", async () => {
+test("startup prepares the model and apply is virtual", async () => {
   const directory = await mkdtemp(join(tmpdir(), "gliner-prune-flow-"));
   let analyzeCalls = 0;
+  let setupCalls = 0;
   const sidecar: PruneSidecar = {
     running: true,
-    setup: async () => {},
+    setup: async () => {
+      setupCalls += 1;
+    },
     stop: async () => {},
     analyze: async () => {
       analyzeCalls += 1;
@@ -76,19 +79,19 @@ test("preview is cached, apply is virtual, and reset restores full context", asy
   const socketPath = bridgeSocketPath(directory);
 
   try {
-    const preview = await callBridge(
-      socketPath,
-      { id: "preview-1", method: "preview", sessionID: "session-1" },
-      5_000,
-    );
-    assert.equal(preview.ok, true);
-
     const applied = await callBridge(
       socketPath,
       { id: "apply-1", method: "apply", sessionID: "session-1" },
       5_000,
     );
     assert.equal(applied.ok, true);
+    if (applied.ok) {
+      assert.match(applied.result.message, /^Context pruned by 80\.0%/);
+      assert.match(applied.result.message, /1\/1 tool results changed/);
+      assert.match(applied.result.message, /Dropped 0 · reduced 0 · omitted 1/);
+      assert.match(applied.result.message, /Stored history unchanged/);
+    }
+    assert.equal(setupCalls, 1);
     assert.equal(analyzeCalls, 1);
 
     const transformed = { messages: structuredClone(messages) };
