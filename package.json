@@ -18,7 +18,7 @@
     "@opencode-ai/plugin": "1.18.31",
     "@types/node": "^24.0.0",
     "tsup": "^8.5.0",
-    "tsx": "^4.23.0",
+    "tsx": "^4.23.15",
     "typescript": "^5.9.0"
   }
 }
