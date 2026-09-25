@@ -15,7 +15,7 @@
     "test:release:opencode": "node scripts/verify_opencode_release.mjs"
   },
   "devDependencies": {
-    "@opencode-ai/plugin": "1.18.31",
+    "@opencode-ai/plugin": "1.18.32",
     "@types/node": "^24.0.0",
     "tsup": "^8.5.0",
     "tsx": "^4.23.0",
